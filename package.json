@@ -5,14 +5,13 @@
   "description": "AiKupon - Monorepo with Express backend and React frontend",
   "workspaces": [
     "client",
-    "server",
-    "shared"
+    "server"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm run dev --workspace=server",
     "dev:client": "npm run dev --workspace=client",
-    "build": "npm run build --workspace=shared && npm run build --workspace=client",
+    "build": "npm run build --workspace=client",
     "start": "npm run start --workspace=server",
     "install:all": "npm install"
   },
