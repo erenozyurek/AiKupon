@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  /* Ana Renkler */
+  --color-primary: #091a2c;
+  --color-primary-light: #0f2841;
+  --color-primary-dark: #050f1b;
+  --color-accent: #c4551e;
+  --color-accent-light: #d4622a;
+  --color-accent-dark: #a84818;
+
+  /* Arka Plan */
+  --color-bg-base: #060b12;
+  --color-bg-card: #0b1520;
+  --color-bg-elevated: #112234;
+  --color-bg-hover: #162c42;
+
+  /* Kenar */
+  --color-border: #162c42;
+  --color-border-light: #1f3a56;
+
+  /* Durum */
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --color-warning: #eab308;
+
+  /* Metin */
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+
+  /* Font */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Global Stiller */
+body {
+  background-color: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-light);
+}
+
+/* Shake animation for coupon full warning */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+.animate-shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+/* Mobile safe area for bottom bar */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
