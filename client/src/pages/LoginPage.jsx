@@ -79,9 +79,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
-            <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center">
-              <span className="text-white font-bold text-lg">Ai</span>
-            </div>
+            <img src="/logo.png" alt="AiKupon" className="w-10 h-10 rounded-xl" />
             <span className="text-2xl font-bold text-text-primary">
               Ai<span className="text-accent">Kupon</span>
             </span>

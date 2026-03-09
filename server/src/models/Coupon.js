@@ -23,6 +23,10 @@ const couponSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    detailed_analysis: {
+      type: String,
+      default: null,
+    },
     created_at: {
       type: Date,
       default: Date.now,

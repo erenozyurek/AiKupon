@@ -72,6 +72,7 @@ const streamAnalyzeWithClaude = async (prompt, onChunk, onDone) => {
 
     return new Promise((resolve, reject) => {
       let buffer = '';
+      let done = false;
 
       response.data.on('data', (chunk) => {
         buffer += chunk.toString();
@@ -91,7 +92,8 @@ const streamAnalyzeWithClaude = async (prompt, onChunk, onDone) => {
               onChunk(event.delta.text);
             }
 
-            if (event.type === 'message_stop') {
+            if (event.type === 'message_stop' && !done) {
+              done = true;
               const parsed = parseClaudeResponse(fullText);
               onDone(null, parsed, fullText);
               resolve(parsed);
@@ -103,7 +105,8 @@ const streamAnalyzeWithClaude = async (prompt, onChunk, onDone) => {
       });
 
       response.data.on('end', () => {
-        if (fullText) {
+        if (!done && fullText) {
+          done = true;
           try {
             const parsed = parseClaudeResponse(fullText);
             onDone(null, parsed, fullText);
@@ -116,8 +119,11 @@ const streamAnalyzeWithClaude = async (prompt, onChunk, onDone) => {
       });
 
       response.data.on('error', (err) => {
-        onDone(err, null, fullText);
-        reject(err);
+        if (!done) {
+          done = true;
+          onDone(err, null, fullText);
+          reject(err);
+        }
       });
     });
   } catch (error) {

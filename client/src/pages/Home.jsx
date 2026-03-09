@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCouponStore } from '../stores/couponStore';
+import { useCacheStore } from '../stores/cacheStore';
 import api from '../lib/api';
 
 const FEATURED_LEAGUES = [
@@ -16,10 +17,18 @@ const FEATURED_LEAGUES = [
 
 function Home() {
   const navigate = useNavigate();
-  const [matches, setMatches] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cacheGet = useCacheStore((s) => s.get);
+  const cacheSet = useCacheStore((s) => s.set);
+  const [matches, setMatches] = useState(() => cacheGet('home_matches') || []);
+  const [loading, setLoading] = useState(() => !cacheGet('home_matches'));
 
   useEffect(() => {
+    const cached = cacheGet('home_matches');
+    if (cached) {
+      setMatches(cached);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -46,6 +55,7 @@ function Home() {
           .sort((a, b) => new Date(a.fullDate || a.date) - new Date(b.fullDate || b.date));
 
         setMatches(upcoming);
+        cacheSet('home_matches', upcoming);
       } catch {
         // sessiz hata
       } finally {

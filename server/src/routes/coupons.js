@@ -42,12 +42,17 @@ router.get('/', async (req, res, next) => {
 
     const userId = new mongoose.Types.ObjectId(req.user.id);
 
+    const filter = { user_id: userId };
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
     const [coupons, total] = await Promise.all([
-      Coupon.find({ user_id: userId })
+      Coupon.find(filter)
         .sort({ created_at: -1 })
         .skip(skip)
         .limit(limit),
-      Coupon.countDocuments({ user_id: userId }),
+      Coupon.countDocuments(filter),
     ]);
 
     // Her kupon için maç sayısını ekle
@@ -158,8 +163,7 @@ router.post('/:id/matches', async (req, res, next) => {
 
     // total_odds güncelle
     const allMatches = await CouponMatch.find({ coupon_id: coupon._id });
-    coupon.total_odds = allMatches.reduce((acc, m) => acc * m.odds, 1);
-    coupon.total_odds = Math.round(coupon.total_odds * 100) / 100;
+    coupon.total_odds = parseFloat((allMatches.reduce((acc, m) => acc * m.odds, 1)).toFixed(2));
     await coupon.save();
 
     res.status(201).json({ message: 'Maç eklendi', data: match });

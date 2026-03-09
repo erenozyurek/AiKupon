@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import { useCouponStore } from '../stores/couponStore';
+import { useCacheStore } from '../stores/cacheStore';
 
 const DERBY_PAIRS = [
   ['Galatasaray', 'Fenerbahçe'], ['Fenerbahçe', 'Galatasaray'],
@@ -70,25 +71,37 @@ export default function FixturesPage() {
   const leagueId = searchParams.get('leagueId');
   const leagueName = searchParams.get('leagueName') || 'Lig';
 
-  const [fixtures, setFixtures] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const cacheGet = useCacheStore((s) => s.get);
+  const cacheSet = useCacheStore((s) => s.set);
+  const [fixtures, setFixtures] = useState(() => (leagueId ? cacheGet(`fixtures_${leagueId}`) || [] : []));
+  const [loading, setLoading] = useState(() => leagueId ? !cacheGet(`fixtures_${leagueId}`) : false);
   const [error, setError] = useState('');
 
-  const fetchFixtures = useCallback(async (lid) => {
+  const fetchFixtures = useCallback(async (lid, force = false) => {
     if (!lid) return;
+    if (!force) {
+      const cached = cacheGet(`fixtures_${lid}`);
+      if (cached) {
+        setFixtures(cached);
+        setLoading(false);
+        return;
+      }
+    }
     setLoading(true);
     setError('');
     try {
       const { data } = await api.get('/fixtures/upcoming', {
         params: { leagueId: lid, days: 10 },
       });
-      setFixtures(data.data || []);
+      const result = data.data || [];
+      setFixtures(result);
+      cacheSet(`fixtures_${lid}`, result);
     } catch (err) {
       setError(err.response?.data?.message || 'Maçlar yüklenirken hata oluştu');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [cacheGet, cacheSet]);
 
   useEffect(() => {
     if (leagueId) fetchFixtures(leagueId);

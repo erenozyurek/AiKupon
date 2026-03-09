@@ -119,22 +119,20 @@ router.post('/generate', async (req, res, next) => {
           // 7. DB'ye kaydet (3 strateji ayrı ayrı)
           sendEvent('status', { phase: 'saving', message: 'Sonuçlar kaydediliyor...', progress: 96 });
 
-          // Önceki analizleri sil (aynı kupon için)
-          await AnalysisResult.deleteMany({ coupon_id: coupon._id });
-
+          // Upsert ile kaydet (duplicate key hatası önlenir)
           const savedResults = [];
           for (const strategy of parsed.strategies) {
-            const result = await AnalysisResult.create({
-              coupon_id: coupon._id,
-              risk_type: strategy.risk_type,
-              ai_response: strategy,
-              created_at: new Date(),
-            });
+            const result = await AnalysisResult.findOneAndUpdate(
+              { coupon_id: coupon._id, risk_type: strategy.risk_type },
+              { ai_response: strategy, created_at: new Date() },
+              { upsert: true, new: true, setDefaultsOnInsert: true }
+            );
             savedResults.push(result);
           }
 
           // 8. Kupon durumunu güncelle
           coupon.status = 'analyzed';
+          coupon.detailed_analysis = parsed.detailed_analysis || null;
           await coupon.save();
 
           // 9. Sonucu gönder
@@ -208,21 +206,19 @@ router.post('/generate-sync', async (req, res, next) => {
     const prompt = buildAnalysisPrompt(matches, matchDataMap);
     const parsed = await analyzeWithClaude(prompt);
 
-    // DB'ye kaydet
-    await AnalysisResult.deleteMany({ coupon_id: coupon._id });
-
+    // Upsert ile kaydet (duplicate key hatası önlenir)
     const savedResults = [];
     for (const strategy of parsed.strategies) {
-      const result = await AnalysisResult.create({
-        coupon_id: coupon._id,
-        risk_type: strategy.risk_type,
-        ai_response: strategy,
-        created_at: new Date(),
-      });
+      const result = await AnalysisResult.findOneAndUpdate(
+        { coupon_id: coupon._id, risk_type: strategy.risk_type },
+        { ai_response: strategy, created_at: new Date() },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
       savedResults.push(result);
     }
 
     coupon.status = 'analyzed';
+    coupon.detailed_analysis = parsed.detailed_analysis || null;
     await coupon.save();
 
     res.json({
@@ -265,6 +261,7 @@ router.get('/:couponId', async (req, res, next) => {
       data: {
         coupon: coupon.toJSON(),
         analyses: results,
+        detailed_analysis: coupon.detailed_analysis || '',
       },
     });
   } catch (error) {

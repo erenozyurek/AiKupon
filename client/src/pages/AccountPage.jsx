@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
+import { useCacheStore } from '../stores/cacheStore';
 import api from '../lib/api';
 
 const TABS = [
@@ -258,13 +259,17 @@ function ProfileTab({ user, token, setAuth, logout }) {
 // 2. KUPONLARIM TAB
 // ══════════════════════════════════════════════
 function CouponsTab() {
-  const [coupons, setCoupons] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const cacheGet = useCacheStore((s) => s.get);
+  const cacheSet = useCacheStore((s) => s.set);
+  const [coupons, setCoupons] = useState(() => cacheGet('account_coupons') || []);
+  const [loading, setLoading] = useState(() => !cacheGet('account_coupons'));
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [modalData, setModalData] = useState(null);
   const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
+    const cached = cacheGet('account_coupons');
+    if (cached) { setCoupons(cached); setLoading(false); return; }
     fetchCoupons();
   }, []);
 
@@ -272,7 +277,9 @@ function CouponsTab() {
     setLoading(true);
     try {
       const res = await api.get('/coupons?limit=50');
-      setCoupons(res.data.data || []);
+      const data = res.data.data || [];
+      setCoupons(data);
+      cacheSet('account_coupons', data);
     } catch {
       setCoupons([]);
     } finally {
@@ -296,6 +303,7 @@ function CouponsTab() {
     try {
       await api.delete(`/coupons/${couponId}`);
       setCoupons((prev) => prev.filter((c) => c._id !== couponId));
+      cacheSet('account_coupons', coupons.filter((c) => c._id !== couponId));
       if (selectedCoupon === couponId) {
         setSelectedCoupon(null);
         setModalData(null);
@@ -465,11 +473,15 @@ function CouponDetailModal({ data, onClose }) {
 // 3. ANALİZ GEÇMİŞİ TAB
 // ══════════════════════════════════════════════
 function HistoryTab() {
-  const [analyses, setAnalyses] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ total: 0, avgConfidence: 0 });
+  const cacheGet = useCacheStore((s) => s.get);
+  const cacheSet = useCacheStore((s) => s.set);
+  const [analyses, setAnalyses] = useState(() => cacheGet('account_history')?.analyses || []);
+  const [loading, setLoading] = useState(() => !cacheGet('account_history'));
+  const [stats, setStats] = useState(() => cacheGet('account_history')?.stats || { total: 0, avgConfidence: 0 });
 
   useEffect(() => {
+    const cached = cacheGet('account_history');
+    if (cached) { setAnalyses(cached.analyses); setStats(cached.stats); setLoading(false); return; }
     fetchHistory();
   }, []);
 
@@ -509,10 +521,12 @@ function HistoryTab() {
         }
       }
 
-      setStats({
+      const newStats = {
         total: analysisEntries.length,
         avgConfidence: confCount > 0 ? Math.round(totalConfidence / confCount) : 0,
-      });
+      };
+      setStats(newStats);
+      cacheSet('account_history', { analyses: analysisEntries, stats: newStats });
     } catch {
       setAnalyses([]);
     } finally {

@@ -134,7 +134,7 @@ export default function CouponPanel() {
           <div className="px-3 pb-3">
             <button
               disabled={!canAnalyze}
-              onClick={() => canAnalyze && navigate('/analysis')}
+              onClick={() => canAnalyze && navigate('/analysis?new=true')}
               className={`w-full py-3 rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
                 canAnalyze
                   ? 'bg-gradient-to-r from-accent to-accent-dark text-white shadow-lg shadow-accent/25 hover:shadow-accent/40 hover:scale-[1.01] active:scale-[0.99]'

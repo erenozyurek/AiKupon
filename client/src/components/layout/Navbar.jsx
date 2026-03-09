@@ -26,9 +26,7 @@ export default function Navbar() {
           </button>
 
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">Ai</span>
-            </div>
+            <img src="/logo.png" alt="AiKupon" className="w-8 h-8 rounded-lg" />
             <span className="text-lg font-bold text-text-primary hidden sm:block">
               Ai<span className="text-accent">Kupon</span>
             </span>

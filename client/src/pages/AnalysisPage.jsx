@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   RadarChart,
   Radar,
@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { useCouponStore } from '../stores/couponStore';
 import { useAuthStore } from '../stores/authStore';
+import { useCacheStore } from '../stores/cacheStore';
 import api from '../lib/api';
 
 // ─── Kriter etiketleri (23 kriter) ───
@@ -67,11 +68,14 @@ const PHASE_ICONS = {
 
 export default function AnalysisPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { matches, clearAll } = useCouponStore();
   const { token } = useAuthStore();
 
+  const isNewAnalysis = searchParams.get('new') === 'true';
+
   // Durumlar
-  const [stage, setStage] = useState('idle'); // idle | loading | results | error
+  const [stage, setStage] = useState(isNewAnalysis ? 'idle' : 'history'); // history | idle | loading | results | error
   const [progress, setProgress] = useState(0);
   const [currentPhase, setCurrentPhase] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -82,14 +86,78 @@ export default function AnalysisPage() {
   const [errorMsg, setErrorMsg] = useState('');
   const [detailedAnalysis, setDetailedAnalysis] = useState('');
 
+  // History state
+  const [historyCoupons, setHistoryCoupons] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const abortRef = useRef(null);
 
-  // Eğer maç yoksa fixtures'a yönlendir
+  // Eğer yeni analiz modunda ve maç yoksa fixtures'a yönlendir
   useEffect(() => {
-    if (matches.length < 2 && stage === 'idle') {
+    if (isNewAnalysis && matches.length < 2 && stage === 'idle') {
       navigate('/fixtures');
     }
-  }, [matches.length, stage, navigate]);
+  }, [matches.length, stage, navigate, isNewAnalysis]);
+
+  const cacheGet = useCacheStore((s) => s.get);
+  const cacheSet = useCacheStore((s) => s.set);
+
+  const cacheInvalidatePrefix = useCacheStore((s) => s.invalidatePrefix);
+
+  // Geçmiş analizleri yükle
+  const fetchHistory = useCallback(async () => {
+    if (!token) return;
+    const cached = cacheGet('analysis_history');
+    if (cached) {
+      setHistoryCoupons(cached);
+      setHistoryLoading(false);
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      const res = await api.get('/coupons?status=analyzed&limit=50');
+      const data = res.data.data || [];
+      setHistoryCoupons(data);
+      cacheSet('analysis_history', data);
+    } catch {
+      setHistoryCoupons([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [token, cacheGet, cacheSet]);
+
+  useEffect(() => {
+    if (stage === 'history' && token) {
+      fetchHistory();
+    }
+  }, [stage, token, fetchHistory]);
+
+  // Geçmiş kuponun analizini yükle
+  const loadCouponAnalysis = useCallback(async (couponId) => {
+    if (!token) return;
+    try {
+      const res = await api.get(`/analysis/${couponId}`);
+      const { analyses, coupon, detailed_analysis } = res.data.data;
+      if (!analyses || analyses.length === 0) {
+        setErrorMsg('Bu kupon için analiz sonucu bulunamadı');
+        setStage('error');
+        return;
+      }
+      const strategies = analyses.map((a) => a.ai_response);
+      const detailed = detailed_analysis || '';
+      setResults({
+        coupon_id: couponId,
+        status: 'analyzed',
+        strategies,
+      });
+      setDetailedAnalysis(detailed);
+      setActiveTab(strategies[0]?.risk_type || 'low');
+      setStage('results');
+    } catch {
+      setErrorMsg('Analiz sonuçları yüklenemedi');
+      setStage('error');
+    }
+  }, [token]);
 
   // SSE ile analiz başlat
   const startAnalysis = useCallback(async () => {
@@ -195,6 +263,9 @@ export default function AnalysisPage() {
       case 'result':
         setResults(data);
         if (data.detailed_analysis) setDetailedAnalysis(data.detailed_analysis);
+        // Yeni analiz oluşturuldu, cache'leri temizle
+        cacheInvalidatePrefix('analysis_');
+        cacheInvalidatePrefix('account_');
         setStage('results');
         break;
       case 'error':
@@ -205,7 +276,7 @@ export default function AnalysisPage() {
         // Stream bitti
         break;
     }
-  }, []);
+  }, [cacheInvalidatePrefix]);
 
   // Sayfa ayrılınca abort
   useEffect(() => {
@@ -214,12 +285,105 @@ export default function AnalysisPage() {
     };
   }, []);
 
-  // idle ise otomatik başlat
+  // Yeni analiz modunda idle ise otomatik başlat
   useEffect(() => {
-    if (stage === 'idle' && matches.length >= 2 && token) {
+    if (isNewAnalysis && stage === 'idle' && matches.length >= 2 && token) {
       startAnalysis();
     }
-  }, [stage, matches.length, token, startAnalysis]);
+  }, [stage, matches.length, token, startAnalysis, isNewAnalysis]);
+
+  // ─── HISTORY STATE ───
+  if (stage === 'history') {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+              <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Analiz Geçmişi
+            </h1>
+            <p className="text-sm text-text-secondary mt-0.5">Geçmiş AI analiz sonuçlarınız</p>
+          </div>
+          {matches.length >= 2 && (
+            <button
+              onClick={() => { setSearchParams({ new: 'true' }); setStage('idle'); }}
+              className="px-4 py-2 bg-gradient-to-r from-accent to-accent-dark text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:shadow-lg hover:shadow-accent/25 transition-all"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Yeni Analiz
+            </button>
+          )}
+        </div>
+
+        {historyLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : historyCoupons.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 bg-bg-card border border-border rounded-2xl flex items-center justify-center mb-4">
+              <svg className="w-8 h-8 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h3 className="text-base font-semibold text-text-primary mb-1">Henüz analiz yok</h3>
+            <p className="text-sm text-text-secondary max-w-sm mb-6">
+              Kuponunuza maç ekleyip analiz çıkarttığınızda sonuçlar burada görünecek.
+            </p>
+            <button
+              onClick={() => navigate('/fixtures')}
+              className="px-5 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-xl text-sm font-semibold transition-colors"
+            >
+              Maçlara Git
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {historyCoupons.map((coupon) => (
+              <button
+                key={coupon._id}
+                onClick={() => loadCouponAnalysis(coupon._id)}
+                className="w-full bg-bg-card border border-border rounded-2xl p-4 hover:bg-bg-hover/50 hover:border-accent/30 transition-all text-left group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-accent/10 border border-accent/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
+                        {coupon.name}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-text-muted">
+                          {coupon.matchCount || 0} maç
+                        </span>
+                        <span className="text-xs text-text-muted">
+                          Oran: {(coupon.total_odds || 0).toFixed(2)}
+                        </span>
+                        <span className="text-xs text-text-muted">
+                          {new Date(coupon.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <svg className="w-5 h-5 text-text-muted group-hover:text-accent transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // ─── LOADING STATE ───
   if (stage === 'loading') {
@@ -241,8 +405,8 @@ export default function AnalysisPage() {
           <button onClick={() => navigate('/fixtures')} className="px-5 py-2.5 bg-bg-card border border-border rounded-xl text-sm text-text-secondary hover:text-text-primary transition-colors">
             Maçlara Dön
           </button>
-          <button onClick={() => { setStage('idle'); }} className="px-5 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-xl text-sm font-semibold transition-colors">
-            Tekrar Dene
+          <button onClick={() => { setStage('history'); setSearchParams({}); }} className="px-5 py-2.5 bg-accent hover:bg-accent-dark text-white rounded-xl text-sm font-semibold transition-colors">
+            Geçmişe Dön
           </button>
         </div>
       </div>
@@ -270,10 +434,10 @@ export default function AnalysisPage() {
             </p>
           </div>
           <button
-            onClick={() => { clearAll(); navigate('/fixtures'); }}
+            onClick={() => { clearAll(); setSearchParams({}); setStage('history'); }}
             className="px-4 py-2 bg-bg-card border border-border rounded-xl text-sm text-text-secondary hover:text-text-primary transition-colors"
           >
-            Yeni Kupon
+            Geçmişe Dön
           </button>
         </div>
 
@@ -438,6 +602,9 @@ function LoadingView({ progress, currentPhase, statusMessage, currentMatch, matc
 // STRATEJI ÖZET KARTI
 // ──────────────────────────────────────────────
 function StrategySummary({ strategy, tabConfig }) {
+  // Toplam oranı maç oranlarının çarpımıyla hesapla
+  const calculatedOdds = (strategy.matches || []).reduce((acc, m) => acc * (m.odds_estimate || 1), 1);
+
   return (
     <div className={`${tabConfig.bg} border ${tabConfig.border} rounded-2xl p-5`}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -456,7 +623,7 @@ function StrategySummary({ strategy, tabConfig }) {
           {/* Toplam oran */}
           <div className="text-center">
             <div className="text-2xl font-bold text-accent">
-              {(strategy.estimated_odds || 0).toFixed(2)}
+              {calculatedOdds.toFixed(2)}
             </div>
             <p className="text-[10px] text-text-muted mt-0.5">Toplam Oran</p>
           </div>
@@ -711,7 +878,7 @@ function handleShareCoupon(strategy) {
     (strategy.matches || []).map((m, i) =>
       `${i + 1}. ${m.home_team} vs ${m.away_team} → ${m.selected_bet} (Oran: ${(m.odds_estimate || 0).toFixed(2)}, Güven: %${m.confidence})`
     ).join('\n') +
-    `\n\nToplam Oran: ${(strategy.estimated_odds || 0).toFixed(2)} | Güven: %${strategy.total_confidence}` +
+    `\n\nToplam Oran: ${(strategy.matches || []).reduce((acc, m) => acc * (m.odds_estimate || 1), 1).toFixed(2)} | Güven: %${strategy.total_confidence}` +
     '\n\nAiKupon ile analiz edildi';
 
   if (navigator.share) {
