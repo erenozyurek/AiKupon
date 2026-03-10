@@ -5,10 +5,9 @@ const connectDB = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 
 dotenv.config({ path: '../.env' });
-dotenv.config(); // Render/production env vars
+dotenv.config(); // Vercel/production env vars
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
 app.use(cors({
   origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : '*',
@@ -16,6 +15,16 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// DB bağlantısı (serverless için lazy connect)
+let isConnected = false;
+app.use(async (_req, _res, next) => {
+  if (!isConnected) {
+    await connectDB();
+    isConnected = true;
+  }
+  next();
+});
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -30,11 +39,18 @@ app.use('/api/analysis', require('./routes/analysis'));
 // Error handler (en sona eklenmeli)
 app.use(errorHandler);
 
-const start = async () => {
-  await connectDB();
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-};
+// Local development
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  const PORT = process.env.PORT || 5000;
+  const start = async () => {
+    await connectDB();
+    isConnected = true;
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  };
+  start();
+}
 
-start();
+// Vercel serverless export
+module.exports = app;
