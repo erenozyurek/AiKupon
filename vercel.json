@@ -4,11 +4,6 @@
   "outputDirectory": "client/dist",
   "framework": null,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" }
-  ],
-  "functions": {
-    "api/index.js": {
-      "maxDuration": 60
-    }
-  }
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ]
 }
