@@ -193,7 +193,8 @@ export default function AnalysisPage() {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const response = await fetch('/api/analysis/generate', {
+      const API_URL = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${API_URL}/api/analysis/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
